@@ -59,7 +59,6 @@ class ntc_lookup_table:
             raise ValueError("low_side_resistance must be >= 0")
         return low_side_resistance * (1 - divider_ratio) / divider_ratio
 
-    # Return resistance in degrees C.
     # Generalized formula for NTC resistance, using the thermistor 'beta' value:
     # T = β / ln(R / (R0 * exp(-β/T0)))
     # T0 = reference temperature (Kelvin)
@@ -75,7 +74,7 @@ class ntc_lookup_table:
         temp = float(self.beta) / math.log(resistance / Rinf)
         return temp - 273.15
 
-    # Calculate the thermistor resistance.
+    # Calculate the thermistor resistance, then temperature.
     def calc_temp_c(self, divider_ratio):
         if self.thermistor_on_top:
             thermistor_r = self.high_side_resistance(divider_ratio,
@@ -192,6 +191,14 @@ class ntc_lookup_table:
         adc_mask = '{:X}'.format(2**self.adc_bits - 1)
         shift = self.adc_bits - self.table_bits
         mask = '{:X}'.format(2**shift - 1)
+
+        if self.thermistor_on_top:
+            interp = "return p1 + (((p2-p1) * (adc_value & 0x{}))>>{});". \
+                     format(mask, shift)
+        else:
+            interp = "return p1 - (((p1-p2) * (adc_value & 0x{}))>>{});". \
+                     format(mask, shift)
+
         str += '\n'
         str += \
 """
@@ -217,10 +224,10 @@ class ntc_lookup_table:
   {} p2 = ntc_table[ (adc_value >> {})+1];
 
   /* Interpolate between both points. */
-  return p1 - (((p1-p2) * (adc_value & 0x{}))>>{});
+  {}
 }}
 """.format(self.adc_bits, self.temperature_resolution, ttype, adc_type,
-           adc_mask, ttype, shift, ttype, shift, mask, shift)
+           adc_mask, ttype, shift, ttype, shift, interp)
 
         return str
 
@@ -257,7 +264,7 @@ if __name__ == "__main__":
     ntc = ntc_lookup_table(opts.adc_bits, opts.table_bits, opts.resolution,
                            opts.beta, opts.reference_resistance,
                            opts.reference_temperature,
-                           opts.other_resistance)
+                           opts.other_resistance, opts.top)
     ntc.generate_table()
     c_code = ntc.generate_c_code()
 
