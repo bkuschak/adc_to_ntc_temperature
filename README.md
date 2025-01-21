@@ -120,3 +120,7 @@ int32_t adc_to_temperature(uint16_t adc_value)
   return p1 - (((p1-p2) * (adc_value & 0x7F))>>7);
 }
 ```
+
+Here is an example of temperature data collected using the generated code.
+
+![screenshot](/img/screenshot.png)
