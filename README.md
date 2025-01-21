@@ -42,6 +42,7 @@ The following output is generated:
 /* ADC to temperature lookup table.
  * 10000 ohms @ 25 deg C. Beta: 3435.
  * NTC thermistor location: bottom side of the voltage divider.
+ * 10000 ohm resistor on opposite side of the voltage divider.
  * Input: 9 MSBs of the ADC value.
  * Output: Temperature in units of 0.01 deg C.
  * LSBs of ADC value should be used to interpolate between the nearest points.

@@ -161,12 +161,14 @@ class ntc_lookup_table:
 /* ADC to temperature lookup table.
  * {} ohms @ {} deg C. Beta: {}.
  * NTC thermistor location: {} side of the voltage divider.
+ * {} ohm resistor on opposite side of the voltage divider.
  * Input: {} MSBs of the ADC value.
  * Output: Temperature in units of {} deg C.
  * LSBs of ADC value should be used to interpolate between the nearest points.
  */
 """.format(int(self.reference_resistance), int(self.reference_temperature),
-           int(self.beta), side, self.table_bits, self.temperature_resolution)
+           int(self.beta), side, int(self.other_resistance), self.table_bits,
+           self.temperature_resolution)
 
         str += 'const {} ntc_table[{}] = {{\n'.format(ttype, len(self.table))
         i = 0
@@ -216,7 +218,7 @@ class ntc_lookup_table:
 
   /* Interpolate between both points. */
   return p1 - (((p1-p2) * (adc_value & 0x{}))>>{});
-}};
+}}
 """.format(self.adc_bits, self.temperature_resolution, ttype, adc_type,
            adc_mask, ttype, shift, ttype, shift, mask, shift)
 
