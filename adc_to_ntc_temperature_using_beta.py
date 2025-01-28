@@ -278,6 +278,8 @@ Adapted from https://www.sebulli.com/ntc/index.php
                     required=True, metavar='OHMS', dest="other_resistance")
     ap.add_argument('-o', '--output', help="Output file to write.",
                     dest="output", metavar='OUTPUT')
+    ap.add_argument('--plot', help='Create plot.', dest='plot', 
+                    action='store_true')
 
     group = ap.add_mutually_exclusive_group(required=True)
     group.add_argument('-t', '--top', help="Thermistor on top-side of voltage "
@@ -291,7 +293,7 @@ Adapted from https://www.sebulli.com/ntc/index.php
                            opts.beta, opts.reference_resistance,
                            opts.reference_temperature,
                            opts.other_resistance, opts.top)
-    ntc.generate_table()
+    lookup_table = ntc.generate_table()
     c_code = ntc.generate_c_code()
 
     if opts.output:
@@ -299,5 +301,29 @@ Adapted from https://www.sebulli.com/ntc/index.php
             f.write(c_code)
     else:
         print(c_code)
+
+    if opts.plot:
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        # Plot the generated table. Indicate those temperatures that fall
+        # outside the range of temperatures provided by the input data. These
+        # will have reduced accuracy.
+        fig, ax = plt.subplots(1)
+        fig.suptitle('ADC to NTC temperature lookup table. Table len: {}.'
+                     .format(len(lookup_table)))
+        table = np.array(lookup_table) * opts.resolution
+        ax.plot(table, 'b-', label='Lookup table')
+        ax.set_xlabel('The {} MSBs of the ADC value'.format(opts.table_bits))
+        ax.set_ylabel('Temperature (°C)')
+        ax.set_xlim(0, 2**opts.table_bits-1)
+        ax.set_ylim(-40, 125)
+        major_ticks = np.linspace(0, 2**opts.table_bits, 9)
+        ax.set_xticks(major_ticks)
+        ax.grid()
+        h, l = ax.get_legend_handles_labels()
+        ax.legend(h[::-1], l[::-1])
+        fig.tight_layout()
+        plt.show()
 
     exit(0)
