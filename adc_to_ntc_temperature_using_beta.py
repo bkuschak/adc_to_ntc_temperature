@@ -7,6 +7,9 @@
 # accurate over some range of temperatures, but becomes less accurate as the
 # range increases.
 #
+# The resulting code is fast, using one integer multiply and some additions and
+# bit shifts.
+#
 # Adapted from https://www.sebulli.com/ntc/index.php
 
 import math
@@ -162,6 +165,9 @@ class ntc_lookup_table:
 #include <stdint.h>
 
 /* ADC to temperature lookup table.
+ * github.com/bkuschak/adc_to_ntc_temperature
+ * Adapted from https://www.sebulli.com/ntc/index.php
+ *
  * {} ohms @ {} deg C. Beta: {}.
  * NTC thermistor location: {} side of the voltage divider.
  * {} ohm resistor on opposite side of the voltage divider.
@@ -210,10 +216,9 @@ class ntc_lookup_table:
  * Convert an ADC value into a temperature value.
  * The ADC value must be a ratiometric measurement of the NTC voltage divider.
  *
- * p1 and p2 are the interpolating points just before and after the
- * ADC value. The function interpolates between these two points
- * The resulting code is very small and fast.
- * Only one integer multiplication is used.
+ * p1 and p2 are the interpolating points just before and after the ADC value.
+ * The function interpolates between these two points. The resulting code is
+ * very small and fast. Only one integer multiplication is used.
  *
  * adc_value: the ADC measurement, {} bits full scale, right justified.
  * Returns the temperature in units of {} °C
@@ -236,7 +241,23 @@ class ntc_lookup_table:
         return str
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
+    description = \
+"""
+Generate a lookup table to convert ratiometric ADC values directly to
+temperature. For use with NTC thermistor voltage divider, where ADC VREF
+is applied across the voltage divider. The NTC thermistor may be located
+on either the top side or bottom side of the divider.
+
+The table is constructed using a manufacturer-provided Beta value, which is
+accurate over some range of temperatures, but becomes less accurate as the
+range increases.
+
+The resulting code is fast, using one integer multiply and some additions and
+bit shifts.
+
+Adapted from https://www.sebulli.com/ntc/index.php
+"""
+    ap = argparse.ArgumentParser(epilog=description)
     ap.add_argument('--adc_bits', help="Number of bits of ADC resolution.",
                     type=int, required=True, dest="adc_bits")
     ap.add_argument('--table_bits', help="Number of bits. Table len = "
