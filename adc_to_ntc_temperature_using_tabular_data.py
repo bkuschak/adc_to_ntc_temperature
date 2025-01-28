@@ -268,6 +268,8 @@ tabular_data_example.txt.
 
 The resulting code is fast, using one integer multiply and some additions and
 bit shifts.
+
+Adapted from https://www.sebulli.com/ntc/index.php
 """
     ap = argparse.ArgumentParser(epilog=description)
     ap.add_argument('--adc_bits', help='Number of bits of ADC resolution.',
@@ -319,7 +321,6 @@ bit shifts.
                    label='Manufacturer data')
         ax[0].set_xlabel('Resistance (ohms)')
         ax[0].set_ylabel('Temperature (°C)')
-        #ax[0].set_title('ADC to NTC temperature conversion\n"
         fig.suptitle('ADC to NTC temperature lookup table\nTable len: {}, '
                      'Temperature range: {} to {} °C'.format(len(lookup_table),
                      min(temperatures), max(temperatures)))
