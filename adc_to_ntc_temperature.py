@@ -235,8 +235,9 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument('--adc_bits', help="Number of bits of ADC resolution.",
                     type=int, required=True, dest="adc_bits")
-    ap.add_argument('--table_bits', help="Number of bits. Table len = 2^N +"
-                    " 1.", type=int, required=True, dest="table_bits")
+    ap.add_argument('--table_bits', help="Number of bits. Table len = "
+                    "2^TABLE_BITS + 1.", type=int, required=True, 
+                    dest="table_bits")
     ap.add_argument('--resolution', help="Temperature resolution (C). Typically"
                     " 0.01.", type=float, required=True, dest="resolution",
                     metavar="DEGREES")
