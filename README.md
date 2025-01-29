@@ -1,8 +1,9 @@
 # Description
 These python scripts were inspired by the webpage
-https://www.sebulli.com/ntc/index.php  
+https://www.sebulli.com/ntc/index.php.   
+I am not affiliated with the webpage.
 
-They generate C-code to convert an ADC measurement of an NTC voltage divider to
+The scipts generate C-code to convert an ADC measurement of an NTC voltage divider to
 temperature using a lookup table. This can be included in an MCU project for
 example.
 
