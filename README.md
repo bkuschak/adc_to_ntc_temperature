@@ -1,15 +1,15 @@
 # Description
-These python scripts were adapted from the webpage
+These python scripts were inspired by the webpage
 https://www.sebulli.com/ntc/index.php  
 
 They generate C-code to convert an ADC measurement of an NTC voltage divider to
 temperature using a lookup table. This can be included in an MCU project for
 example.
 
-The website was limited to 8, 10, 12 bit ADC resolution.  This script allows
+The website was limited to 8, 10, 12 bit ADC resolution.  These scripts allow
 arbitrary values for the ADC resolution and the table length. 
 
-There are two scripts. One generates the lookup table using the
+There are two scripts. One generates a lookup table using the
 manufacturer-specified Beta value. The other generates a table using an
 arbitrary list of manufacturer-specified resistance vs temperature points. The
 second is likely to be more accurate and is recommended if you have access to
@@ -141,11 +141,11 @@ int32_t adc_to_temperature(uint16_t adc_value)
 }
 ```
 
-This is a plot of the resulting table using Beta script:
+This is a plot of the resulting table using the beta script:
 
 ![figure](/img/figure_1_beta.png)
 
-This is a plot of the resulting table using tablular data script:
+This is a plot of the resulting table using the tablular data script:
 
 ![figure](/img/figure_1_tabular_data.png)
 
