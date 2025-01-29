@@ -258,34 +258,34 @@ bit shifts.
 Adapted from https://www.sebulli.com/ntc/index.php
 """
     ap = argparse.ArgumentParser(epilog=description)
-    ap.add_argument('--adc_bits', help="Number of bits of ADC resolution.",
-                    type=int, required=True, dest="adc_bits")
-    ap.add_argument('--table_bits', help="Number of bits. Table len = "
-                    "2^TABLE_BITS + 1.", type=int, required=True, 
-                    dest="table_bits")
-    ap.add_argument('--resolution', help="Temperature resolution (C). Typically"
-                    " 0.01.", type=float, required=True, dest="resolution",
-                    metavar="DEGREES")
-    ap.add_argument('-B', '--beta', help="Thermistor beta value.", type=float,
-                    required=True, dest="beta")
-    ap.add_argument('-R', help="Thermistor reference resistance (ohms).",
+    ap.add_argument('--adc_bits', help='Number of bits of ADC resolution.',
+                    type=int, required=True, dest='adc_bits')
+    ap.add_argument('--table_bits', help='Number of bits. Table len = '
+                    '2^TABLE_BITS + 1.', type=int, required=True, 
+                    dest='table_bits')
+    ap.add_argument('--resolution', help='Temperature resolution (C). Typically'
+                    ' 0.01.', type=float, required=True, dest='resolution',
+                    metavar='DEGREES')
+    ap.add_argument('-B', '--beta', help='Thermistor beta value.', type=float,
+                    required=True, dest='beta')
+    ap.add_argument('-R', help='Thermistor reference resistance (ohms).',
                     type=float, required=True, metavar='OHMS',
-                    dest="reference_resistance")
-    ap.add_argument('-T', help="Thermistor reference temperature (C).",
+                    dest='reference_resistance')
+    ap.add_argument('-T', help='Thermistor reference temperature (C).',
                     type=float, required=True, metavar='DEGREES',
-                    dest="reference_temperature")
-    ap.add_argument('-r', help="Other resistor value (ohms).", type=float,
-                    required=True, metavar='OHMS', dest="other_resistance")
-    ap.add_argument('-o', '--output', help="Output file to write.",
-                    dest="output", metavar='OUTPUT')
+                    dest='reference_temperature')
+    ap.add_argument('-r', help='Other resistor value (ohms).', type=float,
+                    required=True, metavar='OHMS', dest='other_resistance')
+    ap.add_argument('-o', '--output', help='Output file to write.',
+                    dest='output', metavar='OUTPUT')
     ap.add_argument('--plot', help='Create plot.', dest='plot', 
                     action='store_true')
 
     group = ap.add_mutually_exclusive_group(required=True)
-    group.add_argument('-t', '--top', help="Thermistor on top-side of voltage "
-                       "divider.", action='store_true', dest="top")
-    group.add_argument('-b', '--bottom', help="Thermistor on bottom-side of "
-                       "voltage divider.", action='store_true', dest="bottom")
+    group.add_argument('-t', '--top', help='Thermistor on top-side of voltage '
+                       'divider.', action='store_true', dest='top')
+    group.add_argument('-b', '--bottom', help='Thermistor on bottom-side of '
+                       'voltage divider.', action='store_true', dest='bottom')
 
     opts = ap.parse_args()
 
