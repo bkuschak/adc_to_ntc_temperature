@@ -22,6 +22,7 @@
 import argparse
 import numpy as np
 from scipy import interpolate
+from scipy.optimize import curve_fit
 
 class ntc_lookup_table:
 
@@ -30,13 +31,18 @@ class ntc_lookup_table:
     # Other resistance is the other resistor in the voltage divider.
     def __init__(self, adc_bits, table_bits, temperature_resolution, 
                  manufacturer_temperatures, manufacturer_resistances, 
-                 other_resistance, thermistor_on_top=False):
+                 other_resistance, thermistor_on_top=False,
+                 interpolation='piecewise-cubic', steinhart=None):
         if other_resistance <= 0:
             raise ValueError("other_resistance must be > 0")
         if temperature_resolution <= 0:
             raise ValueError("temperature_resolution must be > 0")
         if adc_bits < table_bits:
             raise ValueError("table_bits must be <= adc_bits")
+        if interpolation != 'piecewise-cubic' and interpolation != 'steinhart':
+            raise ValueError("Invalid interpolation method")
+        if steinhart != None and steinhart != 3 and steinhart != 4:
+            raise ValueError("steinhart method must be 3 or 4")
 
         self.adc_bits = adc_bits
         self.table_bits = table_bits
@@ -46,7 +52,16 @@ class ntc_lookup_table:
         self.other_resistance = other_resistance
         self.thermistor_on_top = thermistor_on_top
         self.table = None
-        self.func = self.interpolate_manufacturer_data()
+        self.interpolation = interpolation
+        self.steinhart_parameters = None
+        self.steinhart_covariance = None
+        self.func = None
+        self.func_params = None
+        self.covariance = None
+        if steinhart == 3:
+            self.steinhart_hart = self.steinhart_hart3
+        elif steinhart == 4:
+            self.steinhart_hart = self.steinhart_hart4
 
     @staticmethod
     def read_input_file(input_filename):
@@ -87,18 +102,70 @@ class ntc_lookup_table:
     def resistance_to_temperature(self, resistance):
         if resistance <= 0:
             raise ValueError("resistance must be > 0")
-        temp = self.func(resistance)
+        temp = self.compute_temperature(resistance)
         return temp
 
-    # Interpolate the manufacturer-provided data: temperature as a function of
-    # resistance.
-    def interpolate_manufacturer_data(self):
-        # Piecewise interpolation, passes through each data point exactly.
-        # Requires SciPy 0.17.0 or newer.
+    # Curve-fit the manufacturer-provided data: temperature as a function of
+    # resistance. Piecewise cubic interpolation, passes through each data point
+    # exactly. Requires SciPy 0.17.0 or newer.
+    def cubic_fit_manufacturer_data(self):
         func = interpolate.interp1d(self.manufacturer_resistances,
                                     self.manufacturer_temperatures,
                                     kind='cubic', fill_value='extrapolate') 
         return func
+
+    # Curve-fit the manufacturer-provided data: temperature as a function of
+    # resistance. Single curve approximation using either 3 or 4 parameter
+    # Steinhart-Hart equation.
+    def steinhart_hart_fit_manufacturer_data(self):
+        if self.steinhart_hart == self.steinhart_hart3:
+            initial_values = [1e-3, 1e-3, 1e-3]
+        else:
+            initial_values = [1e-3, 1e-3, 1e-3, 1e-3]
+        kelvin = np.array(self.manufacturer_temperatures) + 273.15
+        parameters, cov = curve_fit(self.steinhart_hart,
+                                    self.manufacturer_resistances,
+                                    kelvin,
+                                    p0=initial_values)
+        self.steinhart_parameters = parameters
+        self.steinhart_covariance = cov
+        return parameters, cov
+
+    # The three-parameter version of the S.H. equation. Returns temperature as
+    # a function of resistance.
+    @staticmethod
+    def steinhart_hart3(r, a, b, c):
+        return 1.0 / (a + b*np.log(r) + c*(np.log(r)**3))
+
+    # The four-parameter version of the S.H. equation. Returns temperature as
+    # a function of resistance.
+    @staticmethod
+    def steinhart_hart4(r, a0, a1, a2, a3):
+        return 1.0 / (a0 + a1*np.log(r) + a2*(np.log(r)**2) +
+                      a3*(np.log(r)**3))
+
+    # Return the S.H. coefficients, or None if not using Steinhart-Hart.
+    def get_steinhart_hart_coefficients(self):
+        return self.steinhart_parameters, self.steinhart_covariance
+
+    # Perform the curve fitting of the manufacturer data.
+    def interpolate_manufacturer_data(self):
+        if self.interpolation == 'piecewise-cubic':
+            self.func = self.cubic_fit_manufacturer_data()
+            self.func_params = None
+            self.covariance = None
+        elif self.interpolation == 'steinhart':
+            params, cov = self.steinhart_hart_fit_manufacturer_data()
+            self.func = self.steinhart_hart
+            self.func_params = params
+            self.covariance = cov
+
+    # Compute the temperature, using the selected interpolation method.
+    def compute_temperature(self, resistance):
+        if self.func_params is not None:
+            return self.func(resistance, *self.func_params) - 273.15
+        else:
+            return self.func(resistance)
 
     # Calculate the thermistor resistance, then temperature.
     def calc_temp_c(self, divider_ratio):
@@ -120,6 +187,9 @@ class ntc_lookup_table:
     # the size of the integers in the table.  
 
     def generate_table(self):
+        # Perform the curve fitting.
+        self.interpolate_manufacturer_data()
+
         self.table_len = 2**self.table_bits + 1
         self.table = [None] * self.table_len
 
@@ -170,6 +240,24 @@ class ntc_lookup_table:
         if self.table == None:
             raise ValueError("Table must be generated first!");
 
+        coef_str = ''
+        fit_str = self.interpolation
+        if fit_str == 'steinhart':
+            coef,cov = self.get_steinhart_hart_coefficients()
+            if len(coef) == 3:
+                fit_str = '3 parameter Steinhart-Hart'
+                coef_str = '\n *   A: {:e}' \
+                           '\n *   B: {:e}' \
+                           '\n *   C: {:e}'.  \
+                           format(coef[0], coef[1], coef[2])
+            else:
+                fit_str = '4 parameter Steinhart-Hart'
+                coef_str = ''
+                for i, c in enumerate(coef):
+                    coef_str += '\n *   A{}: {:e}'.format(i, c)
+                    #if(i < len(coef)-1):
+                        #coef_str += '\n'
+
         # Determine the integer sizes.
         ttype = self.int_type(min(self.table), max(self.table))
         adc_type = self.uint_type(2**self.adc_bits-1)
@@ -182,15 +270,17 @@ class ntc_lookup_table:
  * github.com/bkuschak/adc_to_ntc_temperature
  * Adapted from https://www.sebulli.com/ntc/index.php
  *
- * Table derived from manfacturer-provided temperature/resistance data.
+ * Table derived from manfacturer-provided temperature/resistance data which is
+ * interpolated to fit a {} curve.{}
+ *
  * NTC thermistor location: {} side of the voltage divider.
  * {} ohm resistor on opposite side of the voltage divider.
  * Input: {} MSBs of the ADC value.
  * Output: Temperature in units of {} deg C.
  * LSBs of ADC value should be used to interpolate between the nearest points.
  */
-""".format(side, int(self.other_resistance), self.table_bits,
-           self.temperature_resolution)
+""".format(fit_str, coef_str, side, int(self.other_resistance),
+           self.table_bits, self.temperature_resolution)
 
         str += 'const {} ntc_table[{}] = {{\n'.format(ttype, len(self.table))
         i = 0
@@ -256,17 +346,18 @@ if __name__ == "__main__":
     description = \
 """
 Generate a lookup table to convert ratiometric ADC values directly to
-temperature. For use with NTC thermistor voltage divider, where ADC VREF
-is applied across the voltage divider. The NTC thermistor may be located
-on either the top side or bottom side of the divider.
+temperature. For use with NTC thermistor voltage divider, where ADC VREF is
+applied across the voltage divider. The NTC thermistor may be located on either
+the top side or bottom side of the divider.
 
-The lookup table is constructed from list of manufacturer-specified
-temperature and resistance values. These are provided in a space-delimited
-text file, with each line consisting of one temperature and one resistance.
-Temperature is in deg C and resistance in ohms. See the data in the example
-tabular_data_example.txt.
+The lookup table is constructed from list of manufacturer-specified temperature
+and resistance values. These are provided in a space-delimited text file, with
+each line consisting of one temperature and one resistance. Temperature is in
+deg C and resistance in ohms. See the data in the example
+tabular_data_example.txt. The data is fit to a 3 or 4 parameter Steinhart-Hart
+model or a piecewise cubic. Then it is interpolated to create the lookup table.
 
-The resulting code is fast, using one integer multiply and some additions and
+The resulting C code is fast, using one integer multiply and some additions and
 bit shifts.
 
 Adapted from https://www.sebulli.com/ntc/index.php
@@ -289,6 +380,9 @@ Adapted from https://www.sebulli.com/ntc/index.php
                     dest='output', metavar='OUTPUT')
     ap.add_argument('--plot', help='Create plot.', dest='plot', 
                     action='store_true')
+    ap.add_argument('--steinhart', help='Calculate the Steinhart-Hart '
+                    'coefficients using 3 or 4 parameters.', type=int,
+                    choices={3, 4}, metavar='SH', dest='steinhart')
 
     group = ap.add_mutually_exclusive_group(required=True)
     group.add_argument('-t', '--top', help='Thermistor on top-side of voltage '
@@ -298,13 +392,32 @@ Adapted from https://www.sebulli.com/ntc/index.php
 
     opts = ap.parse_args()
 
+    if opts.steinhart:
+        interpolation = 'steinhart'
+    else:
+        interpolation = 'piecewise-cubic'
+
     temperatures, resistances = ntc_lookup_table.read_input_file(opts.input)
 
     ntc = ntc_lookup_table(opts.adc_bits, opts.table_bits, opts.resolution,
                            temperatures, resistances, opts.other_resistance,
-                           opts.top)
+                           opts.top, interpolation, opts.steinhart)
     lookup_table = ntc.generate_table()
     c_code = ntc.generate_c_code()
+
+    if opts.steinhart:
+        params, cov = ntc.get_steinhart_hart_coefficients()
+        print('Steinhart-Hart coefficients:')
+        if len(params) == 3:
+            print('  A = {:e}\n  B = {:e}\n  C = {:e}'.
+                  format(params[0], params[1], params[2]))
+        else:
+            for i, a in enumerate(params):
+                print('  a[{}] = {:e}'.format(i, a))
+        print('  Standard deviation of the curve fit: {}'.format(np.std(cov)))
+        test_resistance = 10e3
+        print('  Temperature at {} ohms: {:.6f} deg C'.format(test_resistance,
+              ntc.steinhart_hart(test_resistance, *params) - 273.15))
 
     if opts.output:
         with open(opts.output, "w") as f:
