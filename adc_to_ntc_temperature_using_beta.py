@@ -48,8 +48,8 @@ class ntc_lookup_table:
     def normalized_adc_value(self, adc_value, num_bits):
         return float(adc_value) / 2^num_bits;
 
-    # Given a divider ratio and the high-side resistance value, return the low-side 
-    # resistance value.
+    # Given a divider ratio and the high-side resistance value, return the
+    # low-side resistance value.
     def low_side_resistance(self, divider_ratio, high_side_resistance):
         if divider_ratio < 0 or divider_ratio >= 1:
             raise ValueError("divider_ratio out of range (0 to 1)")
@@ -57,8 +57,8 @@ class ntc_lookup_table:
             raise ValueError("high_side_resistance must be >= 0")
         return high_side_resistance * divider_ratio / (1 - divider_ratio)
 
-    # Given a divider ratio and the low-side resistance value, return the high-side 
-    # resistance value.
+    # Given a divider ratio and the low-side resistance value, return the
+    # high-side resistance value.
     def high_side_resistance(self, divider_ratio, low_side_resistance):
         if divider_ratio <= 0 or divider_ratio > 1:
             raise ValueError("divider_ratio out of range (0 to 1)")
@@ -66,7 +66,8 @@ class ntc_lookup_table:
             raise ValueError("low_side_resistance must be >= 0")
         return low_side_resistance * (1 - divider_ratio) / divider_ratio
 
-    # Generalized formula for NTC resistance, using the thermistor 'beta' value:
+    # Generalized formula for NTC resistance, using the thermistor 'beta'
+    # value:
     # T = β / ln(R / (R0 * exp(-β/T0)))
     # T0 = reference temperature (Kelvin)
     # R0 = resistance at reference temperature
@@ -107,11 +108,11 @@ class ntc_lookup_table:
 
         # Calculate the table, excluding the first and last entries.
         for i in range(1, self.table_len-1):
-            # ADC is ratiometric, so the ADC value is fixed point 0 to 1, and is 
-            # equal to the resistor divider ratio.
+            # ADC is ratiometric, so the ADC value is fixed point 0 to 1, and
+            # is equal to the resistor divider ratio.
             divider_ratio = normalized_adc = float(i) / 2**self.table_bits
             self.table[i] = self.calc_temp_c(divider_ratio)
-        
+
         # The first and last entries will not be valid since they correspond to
         # a divider ratio of 0 and infinity, clearly not valid temperatures.
         # Let's recalculate the first and last entries, using a single
@@ -121,7 +122,8 @@ class ntc_lookup_table:
         divider_ratio = normalized_adc = 1 / 2**self.adc_bits
         self.table[0] = self.calc_temp_c(divider_ratio)
 
-        divider_ratio = normalized_adc = (2**self.adc_bits-1) / 2**self.adc_bits
+        divider_ratio = normalized_adc = (2**self.adc_bits-1) /
+                                         2**self.adc_bits
         self.table[self.table_len-1] = self.calc_temp_c(divider_ratio)
         return self.table
 
@@ -224,7 +226,7 @@ class ntc_lookup_table:
  * Returns the temperature in units of {} °C
  *
  */
-{} adc_to_temperature({} adc_value) 
+{} adc_to_temperature({} adc_value)
 {{
   adc_value &= 0x{};
 
@@ -261,7 +263,7 @@ Adapted from https://www.sebulli.com/ntc/index.php
     ap.add_argument('--adc_bits', help='Number of bits of ADC resolution.',
                     type=int, required=True, dest='adc_bits')
     ap.add_argument('--table_bits', help='Number of bits. Table len = '
-                    '2^TABLE_BITS + 1.', type=int, required=True, 
+                    '2^TABLE_BITS + 1.', type=int, required=True,
                     dest='table_bits')
     ap.add_argument('--resolution', help='Temperature resolution (C). Typically'
                     ' 0.01.', type=float, required=True, dest='resolution',
@@ -278,7 +280,7 @@ Adapted from https://www.sebulli.com/ntc/index.php
                     required=True, metavar='OHMS', dest='other_resistance')
     ap.add_argument('-o', '--output', help='Output file to write.',
                     dest='output', metavar='OUTPUT')
-    ap.add_argument('--plot', help='Create plot.', dest='plot', 
+    ap.add_argument('--plot', help='Create plot.', dest='plot',
                     action='store_true')
 
     group = ap.add_mutually_exclusive_group(required=True)
