@@ -25,7 +25,7 @@ piecewise-cubic interpolation of the data provided. This means that the
 resulting curve will exactly pass through each data point provided. Between the
 points, the cubic polynomial will produce relatively little error. However, once
 the temperature gets outside the range of manufacturer-provided values, the
-accuracy quickly degrades, due to the cubic extrapolation.
+accuracy quickly degrades due to the cubic extrapolation.
 
 The alternate mode, using the option --steinhart, will curve fit the provided data
 to a 3 or 4 parameter Steinhart-Hart model and then use that to generate the
@@ -354,10 +354,10 @@ which is then interpolated to create the table. This uses the data points to
 fit a single curve, unlike the piecewise-cubic method. Therefore, the resulting
 curve is unlikely to pass through each data point exactly. However, it might
 result in a more accurate result overall. Since NTC self-heating is most
-relevant at high temperatures (low resistance) an option (--steinhart_exclude)
-is provided to exclude some of the the highest temperature data points when
-fitting the curve. These points might otherwise skew the curve, leading to to
-lower accuracy.
+relevant at high temperatures (low resistance) an option
+```--steinhart_exclude``` is provided to exclude some of the the highest
+temperature data points when fitting the curve. These points might otherwise
+skew the curve, leading to to lower accuracy.
 
 ```
 python3 adc_to_ntc_temperature_using_tabular_data.py --adc_bits=16 --table_bits=9 --resolution=0.01 -r 10e3 -b -f tabular_data_example.txt --steinhart=3 --steinhart_exclude=8
@@ -472,6 +472,8 @@ int32_t adc_to_temperature(uint16_t adc_value)
   return p1 - (((p1-p2) * (adc_value & 0x7F))>>7);
 }
 ```
+
+## Plots
 
 This is a plot of the resulting table using the beta script:
 
