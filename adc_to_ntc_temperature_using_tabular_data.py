@@ -7,12 +7,28 @@
 # temperature and resistance values. These are provided in a space-delimited
 # text file, with each line consisting of one temperature and one resistance.
 # Temperature is in deg C and resistance in ohms. See the data in the example
-# tabular_data_example.txt: 
+# tabular_data_example.txt:
 #
 #     -40 205200.0
 #     -35 154800.0
 #     -30 117900.0
 #     ...
+#
+# By default, the data is fit to a piecewise-cubic curve, which passes through
+# each data point exactly. Since the extreme ends of the table correspond to
+# ADC values that represent extreme (unrealistic) temperatures, the ends of the
+# table are likely to contain wildly inaccurate values extrapolated from well
+# beyond the range of manufacturer data provided. This can usually be safely
+# ignored, as the ADC is not expected to generate these values.
+#
+# Alternatively, using the option --steinhart, a 3 or 4 parameter
+# Steinhart-Hart model is used instead for the curve fit. Since NTC resistance
+# is low at high temperatures, the effect of self-heating causes error. The
+# --steinhart_exclude option can be used to exclude the N highest temperature
+# points when doing the curve fit to avoid them skewing the curve.
+#
+# Regardless of which method is chosen, after the curve fit is done, it is then
+# interpolated to generate the table.
 #
 # The resulting code is fast, using one integer multiply and some additions and
 # bit shifts.
@@ -21,18 +37,21 @@
 
 import argparse
 import numpy as np
+import os
 from scipy import interpolate
 from scipy.optimize import curve_fit
+import sys
 
 class ntc_lookup_table:
 
-    # Manufacturer temperatures / resistances are equal length lists of 
+    # Manufacturer temperatures / resistances are equal length lists of
     # resistance vs temperature, provided by the manufacturer.
     # Other resistance is the other resistor in the voltage divider.
-    def __init__(self, adc_bits, table_bits, temperature_resolution, 
-                 manufacturer_temperatures, manufacturer_resistances, 
+    def __init__(self, adc_bits, table_bits, temperature_resolution,
+                 manufacturer_temperatures, manufacturer_resistances,
                  other_resistance, thermistor_on_top=False,
-                 interpolation='piecewise-cubic', steinhart=None):
+                 interpolation='piecewise-cubic', steinhart=None,
+                 steinhart_exclude=None):
         if other_resistance <= 0:
             raise ValueError("other_resistance must be > 0")
         if temperature_resolution <= 0:
@@ -41,8 +60,13 @@ class ntc_lookup_table:
             raise ValueError("table_bits must be <= adc_bits")
         if interpolation != 'piecewise-cubic' and interpolation != 'steinhart':
             raise ValueError("Invalid interpolation method")
-        if steinhart != None and steinhart != 3 and steinhart != 4:
+        if steinhart and steinhart != 3 and steinhart != 4:
             raise ValueError("steinhart method must be 3 or 4")
+        if steinhart_exclude and (steinhart_exclude < 0 or \
+            steinhart_exclude >= len(manufacturer_temperatures)):
+            raise ValueError("invalid number of data points to exclude")
+        if steinhart_exclude and not steinhart:
+            raise ValueError("cannot exclude data points for piecewise cubic")
 
         self.adc_bits = adc_bits
         self.table_bits = table_bits
@@ -51,6 +75,10 @@ class ntc_lookup_table:
         self.manufacturer_resistances = manufacturer_resistances
         self.other_resistance = other_resistance
         self.thermistor_on_top = thermistor_on_top
+        if steinhart_exclude:
+            self.steinhart_exclude = int(steinhart_exclude)
+        else:
+            self.steinhart_exclude = 0
         self.table = None
         self.interpolation = interpolation
         self.steinhart_parameters = None
@@ -111,7 +139,7 @@ class ntc_lookup_table:
     def cubic_fit_manufacturer_data(self):
         func = interpolate.interp1d(self.manufacturer_resistances,
                                     self.manufacturer_temperatures,
-                                    kind='cubic', fill_value='extrapolate') 
+                                    kind='cubic', fill_value='extrapolate')
         return func
 
     # Curve-fit the manufacturer-provided data: temperature as a function of
@@ -123,8 +151,15 @@ class ntc_lookup_table:
         else:
             initial_values = [1e-3, 1e-3, 1e-3, 1e-3]
         kelvin = np.array(self.manufacturer_temperatures) + 273.15
+        resistances = np.array(self.manufacturer_resistances)
+
+        for i in range(self.steinhart_exclude):
+            index = np.argmax(kelvin)
+            kelvin = np.delete(kelvin, index)
+            resistances = np.delete(resistances, index)
+
         parameters, cov = curve_fit(self.steinhart_hart,
-                                    self.manufacturer_resistances,
+                                    resistances,
                                     kelvin,
                                     p0=initial_values)
         self.steinhart_parameters = parameters
@@ -184,7 +219,7 @@ class ntc_lookup_table:
     # Table size will be (2^num_bits) + 1, usually a subset of the ADC range.
     # The MSBs of the ADC value are used as an index into the table.
     # Temperature resolution is typically 0.1 or 0.01, or 0.001, and affects
-    # the size of the integers in the table.  
+    # the size of the integers in the table.
 
     def generate_table(self):
         # Perform the curve fitting.
@@ -262,6 +297,7 @@ class ntc_lookup_table:
         ttype = self.int_type(min(self.table), max(self.table))
         adc_type = self.uint_type(2**self.adc_bits-1)
         side = 'top' if self.thermistor_on_top else 'bottom'
+        command_line = ' '.join(sys.argv)
         str = \
 """
 #include <stdint.h>
@@ -269,6 +305,9 @@ class ntc_lookup_table:
 /* ADC to temperature lookup table.
  * github.com/bkuschak/adc_to_ntc_temperature
  * Adapted from https://www.sebulli.com/ntc/index.php
+ *
+ * Command:
+ * {}
  *
  * Table derived from manfacturer-provided temperature/resistance data which is
  * interpolated to fit a {} curve.{}
@@ -279,7 +318,7 @@ class ntc_lookup_table:
  * Output: Temperature in units of {} deg C.
  * LSBs of ADC value should be used to interpolate between the nearest points.
  */
-""".format(fit_str, coef_str, side, int(self.other_resistance),
+""".format(command_line, fit_str, coef_str, side, int(self.other_resistance),
            self.table_bits, self.temperature_resolution)
 
         str += 'const {} ntc_table[{}] = {{\n'.format(ttype, len(self.table))
@@ -327,7 +366,7 @@ class ntc_lookup_table:
  * Returns the temperature in units of {} °C
  *
  */
-{} adc_to_temperature({} adc_value) 
+{} adc_to_temperature({} adc_value)
 {{
   adc_value &= 0x{};
 
@@ -343,6 +382,7 @@ class ntc_lookup_table:
         return str
 
 if __name__ == "__main__":
+    os.environ['COLUMNS'] = '80'  # for printing --help
     description = \
 """
 Generate a lookup table to convert ratiometric ADC values directly to
@@ -354,8 +394,20 @@ The lookup table is constructed from list of manufacturer-specified temperature
 and resistance values. These are provided in a space-delimited text file, with
 each line consisting of one temperature and one resistance. Temperature is in
 deg C and resistance in ohms. See the data in the example
-tabular_data_example.txt. The data is fit to a 3 or 4 parameter Steinhart-Hart
-model or a piecewise cubic. Then it is interpolated to create the lookup table.
+tabular_data_example.txt.
+
+By default, the data is fit to a piecewise-cubic curve, which passes through
+each data point exactly. Since the extreme ends of the table correspond to
+ADC values that represent extreme (unrealistic) temperatures, the ends of the
+table are likely to contain wildly inaccurate values extrapolated from well
+beyond the range of manufacturer data provided. This can usually be safely
+ignored, as the ADC is not expected to generate these values.
+
+Alternatively, using the option --steinhart, a 3 or 4 parameter
+Steinhart-Hart model is used instead for the curve fit. Since NTC resistance
+is low at high temperatures, the effect of self-heating causes error. The
+--steinhart_exclude option can be used to exclude the N highest temperature
+points when doing the curve fit to avoid them skewing the curve.
 
 The resulting C code is fast, using one integer multiply and some additions and
 bit shifts.
@@ -366,7 +418,7 @@ Adapted from https://www.sebulli.com/ntc/index.php
     ap.add_argument('--adc_bits', help='Number of bits of ADC resolution.',
                     type=int, required=True, dest='adc_bits')
     ap.add_argument('--table_bits', help='Number of bits. Table len = '
-                    '2^TABLE_BITS + 1.', type=int, required=True, 
+                    '2^TABLE_BITS + 1.', type=int, required=True,
                     dest='table_bits')
     ap.add_argument('--resolution', help='Temperature resolution (C). '
                     'Typically 0.01.', type=float, required=True,
@@ -378,11 +430,15 @@ Adapted from https://www.sebulli.com/ntc/index.php
                     required=True, metavar='OHMS', dest='other_resistance')
     ap.add_argument('-o', '--output', help='Output file to write.',
                     dest='output', metavar='OUTPUT')
-    ap.add_argument('--plot', help='Create plot.', dest='plot', 
+    ap.add_argument('--plot', help='Create plot.', dest='plot',
                     action='store_true')
     ap.add_argument('--steinhart', help='Calculate the Steinhart-Hart '
                     'coefficients using 3 or 4 parameters.', type=int,
                     choices={3, 4}, metavar='SH', dest='steinhart')
+    ap.add_argument('--steinhart_exclude', help='When fitting data to the '
+                    'Steinhart-Hart model, exclude the NUM highest temperature'
+                    ' data points to try to reduce error due to self-heating.',
+                    type=int, metavar='NUM', dest='steinhart_exclude')
 
     group = ap.add_mutually_exclusive_group(required=True)
     group.add_argument('-t', '--top', help='Thermistor on top-side of voltage '
@@ -401,7 +457,8 @@ Adapted from https://www.sebulli.com/ntc/index.php
 
     ntc = ntc_lookup_table(opts.adc_bits, opts.table_bits, opts.resolution,
                            temperatures, resistances, opts.other_resistance,
-                           opts.top, interpolation, opts.steinhart)
+                           opts.top, interpolation, opts.steinhart,
+                           opts.steinhart_exclude)
     lookup_table = ntc.generate_table()
     c_code = ntc.generate_c_code()
 
@@ -418,6 +475,11 @@ Adapted from https://www.sebulli.com/ntc/index.php
         test_resistance = 10e3
         print('  Temperature at {} ohms: {:.6f} deg C'.format(test_resistance,
               ntc.steinhart_hart(test_resistance, *params) - 273.15))
+    else:
+        test_resistance = 10e3
+        print('Piecewise cubic interpolation:')
+        print('  Temperature at {} ohms: {:.6f} deg C'.format(test_resistance,
+              ntc.func(test_resistance)))
 
     if opts.output:
         with open(opts.output, "w") as f:
